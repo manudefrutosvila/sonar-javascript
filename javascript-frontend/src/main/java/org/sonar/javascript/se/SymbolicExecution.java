@@ -39,6 +39,7 @@ import org.sonar.javascript.se.sv.UnknownSymbolicValue;
 import org.sonar.javascript.tree.KindSet;
 import org.sonar.javascript.tree.impl.JavaScriptTree;
 import org.sonar.javascript.tree.impl.SeparateListUtils;
+import org.sonar.javascript.tree.impl.SeparatedList;
 import org.sonar.javascript.tree.symbols.Scope;
 import org.sonar.plugins.javascript.api.symbols.Symbol;
 import org.sonar.plugins.javascript.api.tree.Tree;
@@ -52,6 +53,7 @@ import org.sonar.plugins.javascript.api.tree.declaration.ObjectBindingPatternTre
 import org.sonar.plugins.javascript.api.tree.expression.ArrayAssignmentPatternTree;
 import org.sonar.plugins.javascript.api.tree.expression.AssignmentExpressionTree;
 import org.sonar.plugins.javascript.api.tree.expression.AssignmentPatternRestElementTree;
+import org.sonar.plugins.javascript.api.tree.expression.CallExpressionTree;
 import org.sonar.plugins.javascript.api.tree.expression.ExpressionTree;
 import org.sonar.plugins.javascript.api.tree.expression.IdentifierTree;
 import org.sonar.plugins.javascript.api.tree.expression.InitializedAssignmentPatternElementTree;
@@ -61,6 +63,7 @@ import org.sonar.plugins.javascript.api.tree.expression.ParenthesisedExpressionT
 import org.sonar.plugins.javascript.api.tree.expression.RestElementTree;
 import org.sonar.plugins.javascript.api.tree.statement.ForObjectStatementTree;
 import org.sonar.plugins.javascript.api.tree.statement.ForStatementTree;
+import org.sonar.plugins.javascript.api.tree.statement.IfStatementTree;
 import org.sonar.plugins.javascript.api.tree.statement.ReturnStatementTree;
 import org.sonar.plugins.javascript.api.tree.statement.VariableDeclarationTree;
 
@@ -454,6 +457,9 @@ public class SymbolicExecution {
 
   private void pushConditionSuccessors(CfgBranchingBlock block, ProgramState currentState) {
     SymbolicValue conditionSymbolicValue = currentState.peekStack();
+    if (conditionIsAmbiguous(currentState, conditionSymbolicValue)) {
+      currentState = dropArgumentsConstraintsOfFunctionsInvolvedInCondition(block.branchingTree(), currentState);
+    }
     Tree lastElement = block.elements().get(block.elements().size() - 1);
 
     Optional<ProgramState> constrainedTruePS = currentState.constrain(conditionSymbolicValue, Constraint.TRUTHY);
@@ -471,6 +477,35 @@ public class SymbolicExecution {
     if (!constrainedTruePS.isPresent() && !constrainedFalsePS.isPresent()) {
       throw new IllegalStateException("At least one branch of condition should be executed (condition on line " + ((JavaScriptTree) lastElement).getLine() + ").");
     }
+  }
+
+  private boolean conditionIsAmbiguous(ProgramState currentState, SymbolicValue conditionSymbolicValue) {
+    return currentState.getConstraint(conditionSymbolicValue).equals(Constraint.ANY_VALUE);
+  }
+
+  private ProgramState dropArgumentsConstraintsOfFunctionsInvolvedInCondition(Tree branchingTree, ProgramState currentState) {
+    Set<Symbol> involvedSymbols = retrieveFunctionArgumentSymbolsFromCondition(branchingTree);
+    for (Symbol symbol : involvedSymbols) {
+      currentState = currentState.newSymbolicValue(symbol, Constraint.ANY_VALUE);
+    }
+    return currentState;
+  }
+
+  private Set<Symbol> retrieveFunctionArgumentSymbolsFromCondition(Tree branchingTree) {
+    Set<Symbol> involvedSymbols = new HashSet<>();
+    if (branchingTree.is(Kind.IF_STATEMENT)) {
+      final ExpressionTree condition = ((IfStatementTree) branchingTree).condition();
+      if (condition instanceof CallExpressionTree) {
+        final SeparatedList<Tree> parameters = ((CallExpressionTree) condition).arguments().parameters();
+        for (Tree parameter : parameters) {
+          if (parameter instanceof IdentifierTree) {
+            involvedSymbols.add(((IdentifierTree) parameter).symbol());
+          }
+        }
+      }
+    }
+    involvedSymbols.remove(null);
+    return involvedSymbols;
   }
 
   private void pushConditionSuccessor(
