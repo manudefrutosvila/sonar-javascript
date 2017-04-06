@@ -49,13 +49,7 @@
 6684,
 ],
 'project:google-closure-library/fx/draglistgroup.js':[
-1028,
-1036,
 1051,
-],
-'project:google-closure-library/ui/attachablemenu.js':[
-252,
-254,
 ],
 'project:ocanvas-2.2.2.js':[
 3028,
@@ -69,9 +63,6 @@
 ],
 'project:yui-3.7.3/charts-base/charts-base.js':[
 13791,
-],
-'project:yui-3.7.3/querystring-stringify/querystring-stringify.js':[
-77,
 ],
 'project:yui-3.7.3/widget-position-constrain/widget-position-constrain.js':[
 253,
